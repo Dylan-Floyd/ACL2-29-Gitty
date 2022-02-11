@@ -24,3 +24,5 @@ jobs:
         GITHUB_CLIENT_ID: ${{ secrets.MY_GITHUB_CLIENT_ID }}
         GITHUB_CLIENT_SECRET: ${{ secrets.MY_GITHUB_CLIENT_SECRET }}
         GITHUB_REDIRECT_URI: ${{ secrets.MY_GITHUB_REDIRECT_URI }}
+        API_URL: ${{ secrets.API_URL }}
+        PORT: ${{ secrets.PORT }}
