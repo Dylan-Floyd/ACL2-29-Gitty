@@ -8,7 +8,6 @@ const { setupServer } = require('msw/node');
 const { rest } = require('msw');
 
 const baseURL = `${process.env.API_URL}:${process.env.PORT}`;
-console.log(baseURL.split('').join(' '));
 
 let mockOAuthCode;
 let mockToken;
