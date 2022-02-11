@@ -4,9 +4,10 @@ const request = require('supertest');
 const app = require('../lib/app');
 const fetch = require('cross-fetch');
 const axios = require('axios').default;
-
 const { setupServer } = require('msw/node');
 const { rest } = require('msw');
+
+const baseURL = `${process.env.API_URL}:${process.env.PORT}`;
 
 let mockOAuthCode;
 let mockToken;
@@ -78,7 +79,29 @@ const server = setupServer(
   })
 );
 
-describe('github routes', () => {
+async function login() {
+  const res1 = await fetch(`${baseURL}/api/v1/github/login`, {
+    method: 'GET',
+    redirect: 'manual'
+  });
+
+  //follow redirect to github oauth page, that's mocked with msw
+  const res2 = await fetch(res1.headers.get('location'), {
+    method: 'GET',
+    redirect: 'manual'
+  });
+
+  //follow redirect to /github/login/callback
+  const res3 = await fetch(res2.headers.get('location'), {
+    method: 'GET',
+    credentials: 'include',
+    redirect: 'manual'
+  });
+  
+  return res3.headers.get('set-cookie');
+}
+
+describe('app routes', () => {
   let expressServer;
 
   beforeAll(async () => {
@@ -87,10 +110,10 @@ describe('github routes', () => {
         .once('listening', resolve)
         .once('error', reject);
     });
+    server.listen({ onUnhandledRequest: 'bypass' });
   });
 
   beforeEach(() => {
-    server.listen();
     return setup(pool);
   });
 
@@ -113,28 +136,9 @@ describe('github routes', () => {
   });
 
   //I regret doing this so much
-  it('should login and redirect users to /api/v1/posts', async () => {
-    const baseURL = `${process.env.API_URL}:${process.env.PORT}`;
-    const res1 = await fetch(`${baseURL}/api/v1/github/login`, {
-      method: 'GET',
-      redirect: 'manual'
-    });
+  it('should be able to log in users', async () => {
+    const cookie = await login();
 
-    //follow redirect to github oauth page, that's mocked with msw
-    const res2 = await fetch(res1.headers.get('location'), {
-      method: 'GET',
-      redirect: 'manual'
-    });
-
-    //follow redirect to /github/login/callback
-    const res3 = await fetch(res2.headers.get('location'), {
-      method: 'GET',
-      credentials: 'include',
-      redirect: 'manual'
-    });
-    
-    const cookie = res3.headers.get('set-cookie');
-    
     //use axios because it's the only thing that lets you set cookies
     axios.defaults.withCredentials = true;
     const res4 = await axios.get(`${baseURL}/api/v1/github/me`, {
@@ -150,6 +154,56 @@ describe('github routes', () => {
       iat: expect.any(Number),
       exp: expect.any(Number),
     });
-
   });
+
+  it('should be able to get posts for logged in users', async () => {
+    const cookie = await login();
+
+    //use axios because it's the only thing that lets you set cookies
+    axios.defaults.withCredentials = true;
+    const res = await axios.get(`${baseURL}/api/v1/posts`, {
+      headers: {
+        'Cookie': cookie
+      }
+    });
+
+    const posts = res.data;
+    expect(posts).toEqual([{
+      id: '1',
+      userId: '1',
+      text: 'hello'
+    }]);
+  });
+
+  it('returns a 401 error when getting posts while not logged in', async () => {
+    await expect(axios.get(`${baseURL}/api/v1/posts`)).rejects.toEqual(new Error('Request failed with status code 401'));
+  });
+
+  it('should be able to post a post', async () => {
+    const cookie = await login();
+
+    //use axios because it's the only thing that lets you set cookies
+    axios.defaults.withCredentials = true;
+    const res = await axios(`${baseURL}/api/v1/posts`, {
+      method: 'post', //apparently axios.post doesn't work with cookies
+      headers: {
+        'Cookie': cookie
+      },
+      data: {
+        text: 'i am bob'
+      }
+    });
+
+    const post = res.data;
+    expect(post).toEqual({
+      id: '2',
+      userId: '2',
+      text: 'i am bob'
+    });
+  });
+
+  it('returns a 401 error when posting while not logged in', async () => {
+    await expect(axios.post(`${baseURL}/api/v1/posts`)).rejects.toEqual(new Error('Request failed with status code 401'));
+  });
+
 });
